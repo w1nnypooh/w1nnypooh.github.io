@@ -151,6 +151,45 @@
     color:var(--dim);
     margin-top:10px;
   }
+  .request-meta{
+    font-size:12px;
+    color:var(--dim);
+    margin:8px 0 0;
+    line-height:1.4;
+  }
+  .request-meta strong{
+    color:var(--ink);
+    font-weight:600;
+  }
+  .section-header{
+    display:flex;
+    align-items:center;
+    gap:8px;
+    margin:20px 2px 10px;
+  }
+  .section-header:first-child{
+    margin-top:4px;
+  }
+  .section-dot{
+    width:8px;
+    height:8px;
+    border-radius:50%;
+    flex:none;
+  }
+  .section-dot.p-urgent{background:var(--red);}
+  .section-dot.p-soon{background:var(--amber);}
+  .section-dot.p-routine{background:var(--blue);}
+  .section-title{
+    font-size:12.5px;
+    font-weight:700;
+    letter-spacing:.04em;
+    text-transform:uppercase;
+    color:var(--ink);
+  }
+  .section-count{
+    font-size:11.5px;
+    color:var(--dim);
+  }
 
   /* --- status control: explicit buttons, not a whole-card tap --- */
   .status-control{
@@ -293,6 +332,32 @@ function sortByUrgency(tasks) {
   });
 }
 
+function cardHtml(t) {
+  return `
+    <div class="card p-${t.priority} status-${t.status}" data-id="${t.id}">
+      <div class="card-top">
+        <div>
+          <p class="task-title">${t.title}${t.recurrence ? `<span class="badge recurrence">${t.recurrence}</span>` : ""}</p>
+          <p class="equip">${t.equipment}</p>
+        </div>
+        <span class="badge p-${t.priority}">${priorityLabel[t.priority]}</span>
+      </div>
+      ${t.notes ? `<p class="card-notes">${t.notes}</p>` : ""}
+      <p class="request-meta">Requested by <strong>${t.requested_by || "—"}</strong> · ${t.date_added || "—"}</p>
+      <div class="status-control">
+        ${["open", "in_progress", "done"].map(s => `
+          <button class="status-btn${t.status === s ? ' current' : ''}" data-status="${s}" data-id="${t.id}">
+            ${statusLabel[s]}
+          </button>
+        `).join("")}
+      </div>
+      <div class="card-foot-sub">
+        <span>Assigned: ${t.assigned ? t.assigned : "Unassigned"}</span>
+      </div>
+    </div>
+  `;
+}
+
 function render() {
   const list = document.getElementById('list');
   const base = activeFilter === "all"
@@ -303,39 +368,33 @@ function render() {
         ? TASKS.filter(t => String(t.scheduled).toLowerCase() === "yes")
         : TASKS.filter(t => t.priority === activeFilter);
 
-  const filtered = sortByUrgency(base);
-
   document.getElementById('openCount').textContent =
     TASKS.filter(t => t.status !== "done").length + " open";
 
-  if (filtered.length === 0) {
+  if (base.length === 0) {
     list.innerHTML = '<div class="empty">No tasks in this view.</div>';
     return;
   }
 
-  list.innerHTML = filtered.map(t => `
-    <div class="card p-${t.priority} status-${t.status}" data-id="${t.id}">
-      <div class="card-top">
-        <div>
-          <p class="task-title">${t.title}${t.recurrence ? `<span class="badge recurrence">${t.recurrence}</span>` : ""}</p>
-          <p class="equip">${t.equipment}</p>
-        </div>
-        <span class="badge p-${t.priority}">${priorityLabel[t.priority]}</span>
+  if (activeFilter === "all") {
+    // Grouped by urgency with section headers.
+    const groups = ["urgent", "soon", "routine"].map(p => ({
+      key: p,
+      tasks: sortByUrgency(base.filter(t => t.priority === p))
+    })).filter(g => g.tasks.length > 0);
+
+    list.innerHTML = groups.map(g => `
+      <div class="section-header">
+        <span class="section-dot p-${g.key}"></span>
+        <span class="section-title">${priorityLabel[g.key]}</span>
+        <span class="section-count">${g.tasks.length}</span>
       </div>
-      ${t.notes ? `<p class="card-notes">${t.notes}</p>` : ""}
-      <div class="status-control">
-        ${["open", "in_progress", "done"].map(s => `
-          <button class="status-btn${t.status === s ? ' current' : ''}" data-status="${s}" data-id="${t.id}">
-            ${statusLabel[s]}
-          </button>
-        `).join("")}
-      </div>
-      <div class="card-foot-sub">
-        <span>${t.assigned ? t.assigned : "Unassigned"}${t.date_added ? " · Added " + t.date_added : ""}</span>
-        <span>${t.requested_by ? "Req: " + t.requested_by : ""}</span>
-      </div>
-    </div>
-  `).join("");
+      ${g.tasks.map(cardHtml).join("")}
+    `).join("");
+  } else {
+    // Flat, sorted list for a single filter.
+    list.innerHTML = sortByUrgency(base).map(cardHtml).join("");
+  }
 
   document.querySelectorAll('.status-btn').forEach(btn => {
     btn.addEventListener('click', () => {
