@@ -6,15 +6,17 @@
 <title>Maintenance Board</title>
 <style>
   :root{
-    --bg:#17191b;
-    --panel:#1f2225;
-    --ink:#efece5;
-    --dim:#8b9096;
+    --bg:#15181c;
+    --panel:#1e2227;
+    --ink:#eef1f5;
+    --dim:#8b939c;
+    --accent:#0f52ba;
+    --accent-ink:#eaf1ff;
     --amber:#e8a33d;
     --red:#d1503f;
     --green:#5c9d75;
     --blue:#4f8fc0;
-    --line:#2c2f33;
+    --line:#2a2f36;
   }
   *{box-sizing:border-box;}
   html,body{margin:0;padding:0;}
@@ -37,7 +39,7 @@
     font-size:11px;
     letter-spacing:.12em;
     text-transform:uppercase;
-    color:var(--amber);
+    color:var(--accent);
     font-weight:700;
     margin:0 0 4px;
   }
@@ -74,20 +76,20 @@
     white-space:nowrap;
   }
   .filter-btn.active{
-    background:var(--amber);
-    border-color:var(--amber);
-    color:#1a1305;
+    background:var(--accent);
+    border-color:var(--accent);
+    color:var(--accent-ink);
   }
   main{
     padding:14px 16px 0;
     max-width:640px;
     margin:0 auto;
   }
-  .count-line{
-    font-size:12px;
-    color:var(--dim);
-    margin:14px 2px 10px;
+  .sync-state{
+    font-size:11px;
   }
+  .sync-state.err{color:var(--red);}
+  .sync-state.ok{color:var(--green);}
   .card{
     background:var(--panel);
     border:1px solid var(--line);
@@ -95,27 +97,12 @@
     border-radius:6px;
     padding:12px 14px;
     margin-bottom:10px;
-    cursor:pointer;
-    -webkit-tap-highlight-color:transparent;
+    transition:border-color .25s ease;
   }
-  .card:active{
-    background:#262a2d;
-  }
-  .tap-hint{
-    font-size:10.5px;
-    color:var(--dim);
-    text-align:center;
-    margin:6px 0 0;
-  }
-  .sync-state{
-    font-size:11px;
-  }
-  .sync-state.err{color:var(--red);}
-  .sync-state.ok{color:var(--green);}
   .card.p-urgent{border-left-color:var(--red);}
   .card.p-soon{border-left-color:var(--amber);}
   .card.p-routine{border-left-color:var(--blue);}
-  .card.status-done{opacity:.5;}
+  .card.status-done{opacity:.55;}
   .card-top{
     display:flex;
     justify-content:space-between;
@@ -146,21 +133,64 @@
   .badge.p-urgent{background:rgba(209,80,63,.18);color:var(--red);}
   .badge.p-soon{background:rgba(232,163,61,.18);color:var(--amber);}
   .badge.p-routine{background:rgba(79,143,192,.18);color:var(--blue);}
+  .badge.recurrence{
+    background:rgba(92,157,117,.18);
+    color:var(--green);
+    margin-left:6px;
+  }
   .card-notes{
     font-size:13px;
     color:var(--ink);
     margin:8px 0 0;
     line-height:1.4;
   }
-  .card-foot{
+  .card-foot-sub{
     display:flex;
     justify-content:space-between;
-    font-size:11.5px;
+    font-size:11px;
     color:var(--dim);
-    margin-top:8px;
-    border-top:1px solid var(--line);
-    padding-top:8px;
+    margin-top:10px;
   }
+
+  /* --- status control: explicit buttons, not a whole-card tap --- */
+  .status-control{
+    display:flex;
+    gap:6px;
+    margin-top:10px;
+    border-top:1px solid var(--line);
+    padding-top:10px;
+  }
+  .status-btn{
+    flex:1;
+    background:transparent;
+    border:1px solid var(--line);
+    color:var(--dim);
+    font-size:11.5px;
+    font-weight:700;
+    padding:8px 6px;
+    border-radius:6px;
+    cursor:pointer;
+    -webkit-tap-highlight-color:transparent;
+    transition:transform .12s ease, background .18s ease, border-color .18s ease, color .18s ease;
+  }
+  .status-btn:active{
+    transform:scale(.94);
+  }
+  .status-btn.current{
+    color:#fff;
+  }
+  .status-btn.current[data-status="open"]{ background:var(--red); border-color:var(--red); }
+  .status-btn.current[data-status="in_progress"]{ background:var(--amber); border-color:var(--amber); color:#241a05; }
+  .status-btn.current[data-status="done"]{ background:var(--green); border-color:var(--green); }
+  .status-btn.just-set{
+    animation:pop .32s ease;
+  }
+  @keyframes pop{
+    0%{ transform:scale(1); }
+    40%{ transform:scale(1.08); }
+    100%{ transform:scale(1); }
+  }
+
   .empty{
     text-align:center;
     color:var(--dim);
@@ -190,24 +220,23 @@
 
 <main>
   <div id="list"></div>
-  <p class="tap-hint">Tap a task to cycle: Open → In progress → Done</p>
 </main>
 
 <footer>Updated by maintenance team &middot; scan again for latest</footer>
 
 <script>
 // ---- PASTE YOUR APPS SCRIPT WEB APP URL HERE ----
-const SHEET_API_URL = "https://script.google.com/macros/s/AKfycbxyJFAM_6MN8NBSR20Fg4nOwQFmuBgMiDJ8G6_DOA9QZ4YNDnIZbZ0Vec-PRwX9BwpR/exec";
+const SHEET_API_URL = "PASTE_YOUR_WEB_APP_URL_HERE";
 // --------------------------------------------------
 
 // Shown if the fetch fails (no signal) so the page still isn't blank.
 const FALLBACK_TASKS = [
-  { id: "1", title: "Replace hydraulic filter", equipment: "Press #3", priority: "urgent", status: "open", notes: "Pressure warning light on since Monday.", assigned: "Unassigned" }
+  { id: "1", title: "Replace hydraulic filter", equipment: "Press #3", priority: "urgent", status: "open", notes: "Pressure warning light on since Monday.", assigned: "Unassigned", requested_by: "", date_added: "", scheduled: "no", recurrence: "" }
 ];
 
 const priorityLabel = { urgent: "Urgent", soon: "Soon", routine: "Routine" };
 const statusLabel = { open: "Open", in_progress: "In progress", done: "Done" };
-const statusCycle = { open: "in_progress", in_progress: "done", done: "open" };
+const priorityRank = { urgent: 0, soon: 1, routine: 2 };
 
 let TASKS = FALLBACK_TASKS;
 let activeFilter = "all";
@@ -229,10 +258,19 @@ async function loadTasks() {
   render();
 }
 
-async function updateStatus(id, newStatus) {
+async function setStatus(id, newStatus, btnEl) {
   const task = TASKS.find(t => String(t.id) === String(id));
   if (task) task.status = newStatus; // update locally right away
   render();
+  // Re-find the equivalent button after re-render and give it a satisfying pop.
+  requestAnimationFrame(() => {
+    const card = document.querySelector(`.card[data-id="${CSS.escape(String(id))}"]`);
+    const freshBtn = card && card.querySelector(`.status-btn[data-status="${newStatus}"]`);
+    if (freshBtn) {
+      freshBtn.classList.add('just-set');
+      setTimeout(() => freshBtn.classList.remove('just-set'), 320);
+    }
+  });
   try {
     await fetch(SHEET_API_URL, {
       method: "POST",
@@ -244,13 +282,28 @@ async function updateStatus(id, newStatus) {
   }
 }
 
+function sortByUrgency(tasks) {
+  return [...tasks].sort((a, b) => {
+    const aDone = a.status === "done" ? 1 : 0;
+    const bDone = b.status === "done" ? 1 : 0;
+    if (aDone !== bDone) return aDone - bDone; // open/in-progress before done
+    const ar = priorityRank[a.priority] ?? 3;
+    const br = priorityRank[b.priority] ?? 3;
+    return ar - br;
+  });
+}
+
 function render() {
   const list = document.getElementById('list');
-  const filtered = activeFilter === "all"
+  const base = activeFilter === "all"
     ? TASKS
     : activeFilter === "open"
       ? TASKS.filter(t => t.status !== "done")
-      : TASKS.filter(t => t.priority === activeFilter);
+      : activeFilter === "scheduled"
+        ? TASKS.filter(t => String(t.scheduled).toLowerCase() === "yes")
+        : TASKS.filter(t => t.priority === activeFilter);
+
+  const filtered = sortByUrgency(base);
 
   document.getElementById('openCount').textContent =
     TASKS.filter(t => t.status !== "done").length + " open";
@@ -264,24 +317,29 @@ function render() {
     <div class="card p-${t.priority} status-${t.status}" data-id="${t.id}">
       <div class="card-top">
         <div>
-          <p class="task-title">${t.title}</p>
+          <p class="task-title">${t.title}${t.recurrence ? `<span class="badge recurrence">${t.recurrence}</span>` : ""}</p>
           <p class="equip">${t.equipment}</p>
         </div>
         <span class="badge p-${t.priority}">${priorityLabel[t.priority]}</span>
       </div>
       ${t.notes ? `<p class="card-notes">${t.notes}</p>` : ""}
-      <div class="card-foot">
-        <span>${statusLabel[t.status]}</span>
-        <span>${t.assigned}</span>
+      <div class="status-control">
+        ${["open", "in_progress", "done"].map(s => `
+          <button class="status-btn${t.status === s ? ' current' : ''}" data-status="${s}" data-id="${t.id}">
+            ${statusLabel[s]}
+          </button>
+        `).join("")}
+      </div>
+      <div class="card-foot-sub">
+        <span>${t.assigned ? t.assigned : "Unassigned"}${t.date_added ? " · Added " + t.date_added : ""}</span>
+        <span>${t.requested_by ? "Req: " + t.requested_by : ""}</span>
       </div>
     </div>
   `).join("");
 
-  document.querySelectorAll('.card').forEach(card => {
-    card.addEventListener('click', () => {
-      const id = card.dataset.id;
-      const task = TASKS.find(t => String(t.id) === String(id));
-      if (task) updateStatus(id, statusCycle[task.status]);
+  document.querySelectorAll('.status-btn').forEach(btn => {
+    btn.addEventListener('click', () => {
+      setStatus(btn.dataset.id, btn.dataset.status, btn);
     });
   });
 }
@@ -290,6 +348,7 @@ function renderFilters() {
   const opts = [
     { id: "all", label: "All" },
     { id: "open", label: "Not done" },
+    { id: "scheduled", label: "Scheduled" },
     { id: "urgent", label: "Urgent" },
     { id: "soon", label: "Soon" },
     { id: "routine", label: "Routine" }
