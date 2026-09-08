@@ -242,6 +242,129 @@
     color:var(--dim);
     margin-top:24px;
   }
+
+  /* --- announcement banner --- */
+  .announcement{
+    background:rgba(15,82,186,.12);
+    border:1px solid rgba(15,82,186,.35);
+    border-radius:8px;
+    padding:12px 14px;
+    margin:14px 0;
+  }
+  .announcement-label{
+    font-size:10.5px;
+    font-weight:700;
+    letter-spacing:.08em;
+    text-transform:uppercase;
+    color:var(--accent);
+    margin:0 0 5px;
+  }
+  .announcement-text{
+    font-size:13.5px;
+    line-height:1.5;
+    color:var(--ink);
+    margin:0;
+    white-space:pre-wrap;
+  }
+  .announcement-edit-btn{
+    background:none;
+    border:none;
+    color:var(--dim);
+    font-size:11px;
+    text-decoration:underline;
+    cursor:pointer;
+    padding:8px 0 0;
+  }
+
+  /* --- supplies section --- */
+  .supplies-section{
+    margin:20px 0;
+    padding-top:6px;
+  }
+  .supplies-title{
+    font-size:12.5px;
+    font-weight:700;
+    letter-spacing:.04em;
+    text-transform:uppercase;
+    color:var(--ink);
+    margin:0 0 10px;
+  }
+  .preset-grid{
+    display:grid;
+    grid-template-columns:1fr 1fr;
+    gap:8px;
+    margin-bottom:10px;
+  }
+  .preset-btn{
+    background:var(--panel);
+    border:1px solid var(--line);
+    color:var(--ink);
+    font-size:12.5px;
+    font-weight:600;
+    padding:12px 8px;
+    border-radius:6px;
+    cursor:pointer;
+    text-align:center;
+    transition:transform .12s ease, border-color .18s ease;
+  }
+  .preset-btn:active{ transform:scale(.96); }
+  .preset-btn.just-sent{
+    border-color:var(--green);
+    color:var(--green);
+  }
+  .custom-request-row{
+    display:flex;
+    gap:8px;
+  }
+  .custom-input{
+    flex:1;
+    background:var(--panel);
+    border:1px solid var(--line);
+    color:var(--ink);
+    font-size:13px;
+    padding:10px 12px;
+    border-radius:6px;
+  }
+  .custom-input::placeholder{ color:var(--dim); }
+  .custom-submit{
+    background:var(--accent);
+    border:none;
+    color:var(--accent-ink);
+    font-size:12.5px;
+    font-weight:700;
+    padding:0 16px;
+    border-radius:6px;
+    cursor:pointer;
+  }
+  .supply-list{
+    margin-top:12px;
+  }
+  .supply-row{
+    display:flex;
+    justify-content:space-between;
+    align-items:center;
+    font-size:12.5px;
+    padding:8px 0;
+    border-top:1px solid var(--line);
+    gap:8px;
+  }
+  .supply-item-name{ color:var(--ink); }
+  .supply-status{
+    font-size:11px;
+    color:var(--amber);
+    white-space:nowrap;
+  }
+  .supply-status.ordered{ color:var(--green); }
+  .supply-mark-btn{
+    background:none;
+    border:1px solid var(--line);
+    color:var(--dim);
+    font-size:10.5px;
+    padding:4px 8px;
+    border-radius:4px;
+    cursor:pointer;
+    white-space:nowrap;
+  }
 </style>
 </head>
 <body>
@@ -258,6 +381,8 @@
 </header>
 
 <main>
+  <div id="announcementBox"></div>
+  <div id="suppliesBox"></div>
   <div id="list"></div>
 </main>
 
@@ -267,6 +392,11 @@
 // ---- PASTE YOUR APPS SCRIPT WEB APP URL HERE ----
 const SHEET_API_URL = "https://script.google.com/macros/s/AKfycbxyJFAM_6MN8NBSR20Fg4nOwQFmuBgMiDJ8G6_DOA9QZ4YNDnIZbZ0Vec-PRwX9BwpR/exec";
 // --------------------------------------------------
+
+// Must match ADMIN_PIN in your Apps Script exactly. Change both together.
+const ADMIN_PIN = "1234";
+
+const PRESET_SUPPLIES = ["Zip ties", "Electrical tape", "Box cutters", "Cut-off wheels"];
 
 // Shown if the fetch fails (no signal) so the page still isn't blank.
 const FALLBACK_TASKS = [
@@ -278,7 +408,30 @@ const statusLabel = { open: "Open", in_progress: "In progress", done: "Done" };
 const priorityRank = { urgent: 0, soon: 1, routine: 2 };
 
 let TASKS = FALLBACK_TASKS;
+let ANNOUNCEMENT = "";
+let SUPPLIES = [];
 let activeFilter = "all";
+
+function formatDateLong(dateStr) {
+  if (!dateStr) return "—";
+  const d = new Date(dateStr);
+  if (isNaN(d.getTime())) return dateStr; // show as-typed if it doesn't parse
+  return d.toLocaleDateString(undefined, { month: "long", day: "numeric", year: "numeric" });
+}
+
+function relativeTime(dateStr) {
+  if (!dateStr) return "";
+  const d = new Date(dateStr);
+  if (isNaN(d.getTime())) return "";
+  const diffMs = Date.now() - d.getTime();
+  const diffHrs = diffMs / (1000 * 60 * 60);
+  if (diffHrs < 1) return "just now";
+  if (diffHrs < 24) return Math.floor(diffHrs) + (Math.floor(diffHrs) === 1 ? " hour ago" : " hours ago");
+  const diffDays = Math.floor(diffHrs / 24);
+  if (diffDays < 14) return diffDays + (diffDays === 1 ? " day ago" : " days ago");
+  const diffWeeks = Math.floor(diffDays / 7);
+  return diffWeeks + (diffWeeks === 1 ? " week ago" : " weeks ago");
+}
 
 async function loadTasks() {
   const syncEl = document.getElementById('syncState');
@@ -286,6 +439,8 @@ async function loadTasks() {
     const res = await fetch(SHEET_API_URL, { cache: "no-store" });
     const data = await res.json();
     TASKS = data.tasks;
+    ANNOUNCEMENT = data.announcement || "";
+    SUPPLIES = data.supplies || [];
     syncEl.textContent = "Live";
     syncEl.className = "sync-state ok";
     document.getElementById('lastUpdated').textContent = "Updated " + new Date(data.updated).toLocaleString();
@@ -295,6 +450,119 @@ async function loadTasks() {
   }
   renderFilters();
   render();
+  renderAnnouncement();
+  renderSupplies();
+}
+
+function renderAnnouncement() {
+  const box = document.getElementById('announcementBox');
+  box.innerHTML = `
+    <div class="announcement">
+      <p class="announcement-label">Shop Notes</p>
+      <p class="announcement-text">${ANNOUNCEMENT ? escapeHtml(ANNOUNCEMENT) : "No notes posted right now."}</p>
+      <button class="announcement-edit-btn" id="editAnnouncementBtn">Edit (supervisor)</button>
+    </div>
+  `;
+  document.getElementById('editAnnouncementBtn').addEventListener('click', async () => {
+    const pin = prompt("Enter supervisor PIN:");
+    if (pin === null) return;
+    if (pin !== ADMIN_PIN) { alert("Wrong PIN."); return; }
+    const newText = prompt("Update shop notes:", ANNOUNCEMENT);
+    if (newText === null) return;
+    ANNOUNCEMENT = newText;
+    renderAnnouncement();
+    try {
+      await fetch(SHEET_API_URL, {
+        method: "POST",
+        mode: "no-cors",
+        body: JSON.stringify({ action: "update_announcement", pin, text: newText })
+      });
+    } catch (err) {}
+  });
+}
+
+function renderSupplies() {
+  const box = document.getElementById('suppliesBox');
+  const pending = SUPPLIES.filter(s => s.status !== "ordered");
+  const ordered = SUPPLIES.filter(s => s.status === "ordered").slice(-5).reverse();
+
+  box.innerHTML = `
+    <div class="supplies-section">
+      <p class="supplies-title">Need Supplies?</p>
+      <div class="preset-grid" id="presetGrid">
+        ${PRESET_SUPPLIES.map(item => `<button class="preset-btn" data-item="${item}">${item}</button>`).join("")}
+      </div>
+      <div class="custom-request-row">
+        <input class="custom-input" id="customSupplyInput" type="text" placeholder="Something else? Type it here…">
+        <button class="custom-submit" id="customSupplySubmit">Send</button>
+      </div>
+      <div class="supply-list">
+        ${pending.map(s => `
+          <div class="supply-row">
+            <span class="supply-item-name">${escapeHtml(s.item)}${s.detail ? " — " + escapeHtml(s.detail) : ""}</span>
+            <span class="supply-status">Requested</span>
+            <button class="supply-mark-btn" data-id="${s.id}">Mark ordered</button>
+          </div>
+        `).join("")}
+        ${ordered.map(s => `
+          <div class="supply-row">
+            <span class="supply-item-name">${escapeHtml(s.item)}</span>
+            <span class="supply-status ordered">Ordered ${formatDateLong(s.ordered_at)}</span>
+          </div>
+        `).join("")}
+      </div>
+    </div>
+  `;
+
+  document.querySelectorAll('.preset-btn').forEach(btn => {
+    btn.addEventListener('click', async () => {
+      btn.classList.add('just-sent');
+      btn.textContent = "Sent ✓";
+      try {
+        await fetch(SHEET_API_URL, {
+          method: "POST",
+          mode: "no-cors",
+          body: JSON.stringify({ action: "request_supply", item: btn.dataset.item, type: "preset" })
+        });
+      } catch (err) {}
+    });
+  });
+
+  document.getElementById('customSupplySubmit').addEventListener('click', async () => {
+    const input = document.getElementById('customSupplyInput');
+    const val = input.value.trim();
+    if (!val) return;
+    input.value = "";
+    try {
+      await fetch(SHEET_API_URL, {
+        method: "POST",
+        mode: "no-cors",
+        body: JSON.stringify({ action: "request_supply", item: val, type: "custom" })
+      });
+    } catch (err) {}
+  });
+
+  document.querySelectorAll('.supply-mark-btn').forEach(btn => {
+    btn.addEventListener('click', async () => {
+      const pin = prompt("Enter supervisor PIN:");
+      if (pin === null) return;
+      if (pin !== ADMIN_PIN) { alert("Wrong PIN."); return; }
+      try {
+        await fetch(SHEET_API_URL, {
+          method: "POST",
+          mode: "no-cors",
+          body: JSON.stringify({ action: "mark_ordered", pin, id: btn.dataset.id })
+        });
+      } catch (err) {}
+      loadTasks();
+    });
+  });
+}
+
+function escapeHtml(str) {
+  const div = document.createElement('div');
+  div.textContent = str;
+  return div.innerHTML;
 }
 
 async function setStatus(id, newStatus, btnEl) {
@@ -343,7 +611,7 @@ function cardHtml(t) {
         <span class="badge p-${t.priority}">${priorityLabel[t.priority]}</span>
       </div>
       ${t.notes ? `<p class="card-notes">${t.notes}</p>` : ""}
-      <p class="request-meta">Requested by <strong>${t.requested_by || "—"}</strong> · ${t.date_added || "—"}</p>
+      <p class="request-meta">Requested by <strong>${t.requested_by || "—"}</strong> · ${formatDateLong(t.date_added)}${t.date_added ? " (" + relativeTime(t.date_added) + ")" : ""}</p>
       <div class="status-control">
         ${["open", "in_progress", "done"].map(s => `
           <button class="status-btn${t.status === s ? ' current' : ''}" data-status="${s}" data-id="${t.id}">
